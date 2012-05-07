@@ -1,0 +1,150 @@
+<?php
+/**
+ * @file
+ * Install, update and uninstall functions for the ww_enterprise module.
+ *
+ */
+
+
+/**
+ * @todo Please document this function.
+ * @see http://drupal.org/node/1354
+ */
+function ww_enterprise_install() {
+  // TODO The drupal_(un)install_schema functions are called automatically in D7.
+  // drupal_install_schema('ww_enterprise')
+}
+
+/**
+ * @todo Please document this function.
+ * @see http://drupal.org/node/1354
+ */
+function ww_enterprise_uninstall() {
+  // TODO The drupal_(un)install_schema functions are called automatically in D7.
+  // drupal_uninstall_schema('ww_enterprise')
+}
+
+/**
+ * Implements hook_enable().
+ *
+ */
+function ww_enterprise_enable() {
+  // Attach Images Attach Images
+  variable_set('image_attach_ww_enterprise', '1');
+  // Teaser image size Thumbnail
+  variable_set('image_attach_size_teaser_ww_enterprise', 'thumbnail');
+  // Full node image size Preview
+  variable_set('image_attach_size_body_ww_enterprise', 'preview');
+}
+
+/**
+ * @todo Please document this function.
+ * @see http://drupal.org/node/1354
+ */
+function ww_enterprise_update_6100() {
+  $ret = array();
+  if (db_table_exists('ww_enterprise_preview')) {
+    return $ret;
+  }
+
+  $schema = ww_enterprise_schema();
+
+  // Install new schema.
+  db_create_table('ww_enterprise_preview', $schema['ww_enterprise_preview']);
+
+  // hook_update_N() no longer returns a $ret array. Instead, return
+  // nothing or a translated string indicating the update ran successfully.
+  // See http://drupal.org/node/224333#update_sql.
+  return t('TODO Add a descriptive string here to show in the UI.') /* $ret */;
+}
+
+/**
+ * @todo Please document this function.
+ * @see http://drupal.org/node/1354
+ */
+function ww_enterprise_schema() {
+  $schema['ww_enterprise_story'] = array(
+    'fields' => array(
+      'vid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'nid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'writer' => array(
+        'type' => 'varchar',
+        'length' => 127,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+    ),
+    'indexes' => array('nid' => array('nid')),
+    'primairy key' => array('vid'),
+  );
+
+  $schema['ww_enterprise_preview'] = array(
+    'fields' => array(
+      'vid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'nid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'hash' => array(
+        'type' => 'varchar',
+        'length' => 200,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'date' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'indexes' => array('nid' => array('nid')),
+    'primairy key' => array('vid'),
+  );
+
+  return $schema;
+}
+
+/**
+ * Implements hook_requirements().
+ *
+ * @param string $phase
+ */
+function ww_enterprise_requirements($phase) {
+  $requirements = array();
+
+  /* Not needed anymore
+   // runtime requirements are only listed in the status report
+   if ($phase == 'runtime'){
+   // check settings (only if they're set not their value)
+   $keywordsVoc = variable_get('ww_enterprise_keywords_vocabulary', '');
+   $categoryVoc = variable_get('ww_enterprise_category_vocabulary', '');
+   $categoryDef = variable_get('ww_enterprise_category_default', '');
+   if ($keywordsVoc == '' || $categoryVoc == '' || $categoryDef == ''){
+   $requirements['ww_enterprise_config'] = array(
+   'title' => t('WoodWing Enterprise module'),
+   'value' => t('Not configured'),
+   'description' => t('WoodWing Enterprise module has not been configures yet'),
+   'severity' => REQUIREMENT_WARNING);
+   }
+   }
+   */
+
+  return $requirements;
+}
