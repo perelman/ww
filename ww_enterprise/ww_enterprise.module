@@ -328,7 +328,27 @@ function importImages($images, $publish, &$idArray, &$keywords) {
  * @param object &$inode image node object
  */
 function ww_enterprise_attachImage($file, &$fileObj, &$node, &$inode = null) {
+  dd($fileObj);
+  static $clean_images = true;
+  $wrp = entity_metadata_wrapper('node', $node);
+  
+  if ($clean_images == FALSE) { 
+    $imagesArr = $wrp->field_images->value();
+    if (!$imagesArr) {
+      $imagesArr = array();
+    }
+  }
+  else {
+    $imagesArr = array();
+    $clean_images = FALSE;
+  }
+
+  $imagesArr[] = (array)$fileObj;
+  $wrp->field_images->set($imagesArr);
+  $wrp->save();
+  return '';
   $id = 0;
+  
   // in case of an update the iid is set and the old image node can be removed. Have to check if node is still present.
   // Check is needed because 'unplublished images' are removed from drupal when they are replaced by by a new one. BZ#20980-82.
   if (isset($file['iid']) && $file['iid'] && node_load($file['iid'])) {
@@ -434,6 +454,7 @@ function ww_enterprise_attachFile($file, &$fileObj, &$node) {
  * @param array $imageNodes
  */
 function ww_enterprise_attachFiles($files, &$idArray, &$keywords, &$node, &$imageNodes) {
+
   static $imageTypes = array(
     'image/jpeg' => true,
     'image/jpg' => true,
@@ -441,17 +462,17 @@ function ww_enterprise_attachFiles($files, &$idArray, &$keywords, &$node, &$imag
     'image/png' => true,
   );
 
-  // remove current attachments
-  $node->iid = null;
-  // The new image attach array. First entry must be present. This is a dummy that gets unset by the image_attach module.
-  $node->iids = array('- None -');
+//   // remove current attachments
+//   $node->iid = null;
+//   // The new image attach array. First entry must be present. This is a dummy that gets unset by the image_attach module.
+//   $node->iids = array('- None -');
 
-  if (isset($node->files)) {
-    // Set the current files to remove. If a file is reattached then the file isn't deleted.
-    foreach ($node->files as &$oldFile) {
-      $oldFile->remove = true;
-    }
-  }
+//   if (isset($node->files)) {
+//     // Set the current files to remove. If a file is reattached then the file isn't deleted.
+//     foreach ($node->files as &$oldFile) {
+//       $oldFile->remove = true;
+//     }
+//   }
 
   foreach ($files as $file) {
     $fid = isset($file['fid']) ? intval($file['fid']) : 0;
@@ -500,6 +521,7 @@ function ww_enterprise_attachFiles($files, &$idArray, &$keywords, &$node, &$imag
  * @return object node or null if there's an error
  */
 function importTextElements($dossierProps, $textElements, $publish, $promote, $oldNode, $fileAttachments, &$keywords, &$idArray = array(), $elements = array(), $options = array(), $entUser = array(), $extraMetaData = array(), $dialogFields = array()) {
+
   global $user;
 
   // Walk thru text elements to get head and body:
@@ -549,7 +571,8 @@ function importTextElements($dossierProps, $textElements, $publish, $promote, $o
       }
     }
   }
-
+  
+  
   if (is_null($body)) {
     $body = '';
   }
@@ -558,17 +581,12 @@ function importTextElements($dossierProps, $textElements, $publish, $promote, $o
     throw new Exception(t('Cannot publish node with an empty head!'));
   }
 
-  // Drupal body is teaser plus body seperated by "<!--break-->"
-  if (!empty($teaser)) {
-    $body = $teaser . "\n<!--break-->\n" . $body;
-  }
-
   // find taxonomy
-  $taxonomy = array();
+  $taxonomy = null;
   if (isset($extraMetaData['drupal_terms'])) {
     foreach ($extraMetaData['drupal_terms'] as $termdata) {
       $term = explode('-', $termdata);
-      $taxonomy[] = $term[1];
+      $taxonomy = $term[1];
     }
   }
 
@@ -631,23 +649,20 @@ function importTextElements($dossierProps, $textElements, $publish, $promote, $o
   $promoteDefault = in_array('promote', $node_options);
   $stickyDefault = in_array('sticky', $node_options);
   $commentDefault = variable_get('comment_' . $type, 0);
-
+  
   if ($oldNode) {
     // Update node
     $node = $oldNode;
     $node->type = $type;
     $node->status = $publish;
+    
     //$node->promote = $promote; // Is set on Enterprise side now, if not set use content type default
     $node->title = $head;
-    $node->body = $body;
-    $node->teaser = $teaser;
-    $node->writer = $writer;
-    $node->taxonomy = $taxonomy;
+
     $node->changed = REQUEST_TIME;
 
     if (!is_null($author)) {
       $node->uid = $author->uid;
-      $node->name = $author->name;
     }
 
     if (isset($options['pagetitle']) && !empty($options['pagetitle'])) {
@@ -686,19 +701,19 @@ function importTextElements($dossierProps, $textElements, $publish, $promote, $o
       $node->comment = $commentDefault;
     }
 
-    if (!empty($metatags)) {
-      // First delete the current metatags from the 'nodewords' table
-      // TODO Please review the conversion of this statement to the D7 database API syntax.
-      /* db_query("DELETE FROM {nodewords} WHERE id = '%s'", $node->nid) */
-      db_delete('nodewords')
-  ->condition('id', $node->nid)
-  ->execute();
-      $node->nodewords = $metatags;
-    }
+//     if (!empty($metatags)) {
+//       // First delete the current metatags from the 'nodewords' table
+//       // TODO Please review the conversion of this statement to the D7 database API syntax.
+//       /* db_query("DELETE FROM {nodewords} WHERE id = '%s'", $node->nid) */
+//       db_delete('nodewords')
+//   ->condition('id', $node->nid)
+//   ->execute();
+//       $node->nodewords = $metatags;
+//     }
 
-    if (isset($options['urlpath']) && !empty($options['urlpath'])) {
-      $node->path = $options['urlpath'];
-    }
+//     if (isset($options['urlpath']) && !empty($options['urlpath'])) {
+//       $node->path = $options['urlpath'];
+//     }
 
   }
   else {
@@ -706,14 +721,9 @@ function importTextElements($dossierProps, $textElements, $publish, $promote, $o
     $edit = array(// this is the node array used with node_save call
       'type' => $type, // type of the node
       'uid' => $author->uid, // user id who published it
-      'name' => $author->name, // username who published it, we need it because $user can be administrator
       'status' => $publish, // status (publish / do not publish)
       //'promote' => $promote, // show on title page // Is set on Enterprise side now, if not set use content type default
       'title' => $head, // header
-      'body' => $body, // body
-      'teaser' => $teaser, // teaser
-      'writer' => $writer, // writer
-      'taxonomy' => $taxonomy, // category
       'changed' => REQUEST_TIME,
     );
    
@@ -760,18 +770,25 @@ function importTextElements($dossierProps, $textElements, $publish, $promote, $o
     if (isset($options['urlpath']) && !empty($options['urlpath'])) {
       $edit['path'] = $options['urlpath'];
     }
-    $form_state = array();
     // validate node
-    node_validate($edit, array(), $form_state); 
+
+//    $e = entity_property_values_create_entity('node', $edit);
+    //@TODO: MAP extra fields.
+//    $e->save();
+    
+    
+    dd('aaa');
+    node_validate($edit, null); // validate node
     $errors = form_get_errors();
     if ( $errors ) {
-      throw new Exception(t('Error validating node: %errors', array('%errors' => implode("\n", array_values($errors)))));
+      throw new Exception(t('Error validating node: %errors', array('%errors'=>implode("\n", array_values($errors)))));
     }
-
-    // submit node.
-    $node = node_submit((object)$edit); 
+    $node = node_submit($edit); // submit node...
+    
   }
 
+  
+  
   $imageNodes = array();
   // Handle the attachements
   ww_enterprise_attachFiles($fileAttachments, $idArray, $keywords, $node, $imageNodes);
@@ -787,15 +804,24 @@ function importTextElements($dossierProps, $textElements, $publish, $promote, $o
     
 //   }
 
-//   if ( count($idArray) > 0 && count($imageNodes) > 0 ) {
-//     // parse enterprise image URL's to valid drupal URL's
-//     ww_enterprise_parse_images( $node, $idArray, $imageNodes );
-//     $node = node_submit($node);
-//   }
+  $node = (object)$node;
+  
+  if ( count($idArray) > 0 && count($imageNodes) > 0 ) {
+    // parse enterprise image URL's to valid drupal URL's
+    ww_enterprise_parse_images($node, $idArray, $imageNodes);
+  }
+  
+  $node->language = LANGUAGE_NONE;
 
-  node_save($node); //... and save it so we have node id
-
-  return $node;
+  $wrp = entity_metadata_wrapper('node', $node);
+  if ($taxonomy) {
+    $wrp->field_aaa->set($taxonomy);
+  }
+  $node_body = array('value' => $body, 'summary' => $teaser, 'format' => 'full_html');
+  $wrp->body->set($node_body);
+  
+  $wrp->save();
+  return $wrp->value();
 }
 
 function getComments($value) {
@@ -835,7 +861,6 @@ function getUsername($entUser) {
       foreach ($result as $r) {
         $author = new stdClass();
         $author->uid = $r->uid;
-        $author->name = $r->name;
       }
     }
 
@@ -1036,7 +1061,7 @@ function ww_enterprise_parse_images( &$node, $idArray, &$imageNodes ) {
   // regular express our way through every enterprise image object.
   $pattern = '/<img[^>]*id=\"ent_([^\"]*)[^>]*src=\"([^\"]*)[^>]*>/i';
 
-  $types = array('teaser', 'body');
+  $types = array('body');
 
   foreach ($types as $type) {
     $pattern_result = array(); // elements: 0 = the full image element (<img>), 1 = the image id (without the "ent_" prefix), 2 = the image src.
@@ -1093,6 +1118,7 @@ function ww_enterprise_parse_images( &$node, $idArray, &$imageNodes ) {
  */
 function ww_enterprise_xmlrpc_nodeUpdate($logOnParams, $nid, $dossierProps, $textelements, $images, $otherFiles, $user, $extraMetaData, $options, $dialogFields) {
   // keep analyzer happy
+  dd(func_get_args());
   watchdog('yuval', 'nodeupdate');
   $images = $images;
 
@@ -1132,7 +1158,6 @@ function ww_enterprise_xmlrpc_nodeUpdate($logOnParams, $nid, $dossierProps, $tex
     watchdog('content', $e->getMessage(), array(), WATCHDOG_ERROR);
     $result = array('Errors' => array($e->getMessage()));
   }
-  watchdog('yuval', print_r($r, true));
   return $result;
 }
 
@@ -1314,8 +1339,7 @@ function ww_enterprise_xmlrpc_testConfig($logOnParams) {
 }
 
 /**
- * Implements hook_menu().().
- */
+ * Implements hook_menu(). */
 function ww_enterprise_menu() {
   $items['ww_enterprise/%node/%'] = array(
     'title callback' => 'ww_enterprise_title',
@@ -1339,8 +1363,7 @@ function ww_enterprise_menu() {
 }
 
 /**
- * Implements hook_access().().
- */
+ * Implements hook_access(). */
 function ww_enterprise_page_access($op, $node, $account = NULL) {
   //TODO check if requested from Enterprise server
   $op = $op;
@@ -1446,21 +1469,20 @@ function ww_enterprise_saveFiles(array $files) {
  */
 function ww_enterprise_createFile($data, $fileName, $fileType) {
   global $user;
-
-  $fileObj = new stdClass();
-  $fileObj->filename = $fileName; //$file['name'] . $file['ext'];
-  $filePath = file_save_data($data, 
-	file_create_filename($fileObj->filename, file_directory_path()));
-  $fileObj->fid = 0;
-  $fileObj->uid = $user->uid;
-  $fileObj->filepath = $filePath;
-  $fileObj->filemime = $fileType; //$file['type'];
-  $fileObj->filesize = strlen($data);
-  $fileObj->status = ~FILE_STATUS_PERMANENT;
-  $fileObj->timestamp = REQUEST_TIME;
-  drupal_write_record('files', $fileObj);
-
+  
+  //$path = file_create_filename($fileName, variable_get('file_public_path', conf_path() . '/files'));
+  $path = file_default_scheme() . '://' . $fileName;
+  $fileObj = file_save_data($data,	$path);
+  
   return $fileObj;
+  //$fileObj->fid = 0;
+  //$fileObj->uid = $user->uid;
+  //$fileObj->filepath = $filePath;
+  //$fileObj->filemime = $fileType; //$file['type'];
+  //$fileObj->filesize = strlen($data);
+  //$fileObj->status = ~FILE_STATUS_PERMANENT;
+  //$fileObj->timestamp = REQUEST_TIME;
+  //drupal_write_record('files', $fileObj);
 }
 
 /**
@@ -1470,11 +1492,12 @@ function ww_enterprise_createFile($data, $fileName, $fileType) {
  *
  */
 function ww_enterprise_upload() {
+
   $dom = new DOMDocument('1.0', 'UTF-8');
   $uploadResponseEl = $dom->createElement('UploadResponse');
   try {
     ww_enterprise_logOn($_POST);
-    $file = file_save_upload('upload', array(), file_directory_path());
+    $file = file_save_upload('upload', array(), file_default_scheme() . '://');
     $fidEl = $dom->createElement('fid');
     $fidEl->appendChild($dom->createTextNode($file->fid));
     $uploadResponseEl->appendChild($fidEl);
@@ -1487,6 +1510,7 @@ function ww_enterprise_upload() {
   }
   $dom->appendChild($uploadResponseEl);
   print $dom->saveXML();
+  
 }
 
 /**
@@ -1562,6 +1586,9 @@ function ww_enterprise_xmlrpc_getVocabularies($logOnParams, $contentType) {
     if (($f['module'] == 'taxonomy') && (in_array( $contentType, $f['bundles']['node']))) {
       $voc_names[] = $f['settings']['allowed_values'][0]['vocabulary'];
     } 
+  }
+  if (!$voc_names) {
+    return; 
   }
   $info = array();
 
