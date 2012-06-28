@@ -1,7 +1,8 @@
 <?php
-drupal_set_time_limit(3600);
+
 define('WW_ENTERPRISE_CONTENT_TYPE', 'ww_enterprise');
-include_once DRUPAL_ROOT . '/' . drupal_get_path('module', 'ww_enterprise') . '/ww_enterprise_story.inc';
+define('WW_ENTERPRISE_BLOGGER_RID', 7);
+// include_once DRUPAL_ROOT . '/' . drupal_get_path('module', 'ww_enterprise') . '/ww_enterprise_story.inc';
 /**
  * Implementation of hook_xmlrpc()
  */
@@ -69,6 +70,14 @@ function ww_enterprise_xmlrpc() {
     array('struct', 'struct', 'string'),
     t(''),
   );
+  
+  $xmlrpc[] = array(
+      'enterprise.getUsers',
+      'ww_enterprise_xmlrpc_getUsers',
+      array('struct', 'struct'),
+      t(''),
+  );
+  
 
   $xmlrpc[] = array(
     'enterprise.getTerms',
@@ -93,80 +102,6 @@ function ww_enterprise_xmlrpc() {
 
   return $xmlrpc;
 
-}
-
-/**
- * Implements hook_block_info().
- */
-function ww_enterprise_block_info() {
-  // TODO Rename block deltas (e.g. delta-0) to readable strings. // If $op is "list", we just need to return a list of block descriptions.
-  $blocks['delta-0']['info'] = t('Attached images');
-  $blocks['delta-1']['info'] = t('Attached images');
-  return $blocks;
-}
-
-/**
- * Implements hook_block_configure().
- */
-function ww_enterprise_block_configure($delta) {
-  // Do nothing
-  return null;
-}
-
-/**
- * Implements hook_block_save().
- */
-function ww_enterprise_block_save($delta, $edit) {
-  // Do nothing
-  return null;
-}
-
-/**
- * Implements hook_block_view().
- */
-function ww_enterprise_block_view($delta) {
-  // TODO Rename block deltas (e.g. delta-0) to readable strings.
-  switch ($delta) {
-    case 'delta-1':
-      $block['subject'] = t('Attached images');
-      $block['content'] = block_ww_enterprise_contents(1);
-      break;
-  }
-  return $block;
-}
-
-/**
- * Implements hook_block()().
- */
-function ww_enterprise_block_OLD($op = 'list', $delta = 0, $edit = array()) {
-  // TODO Remaining code in this function needs to be moved to the appropriate new hook function.
-  $edit = $edit; // keep analyzer happy
-  return null;
-}
-
-/**
- * Implementation of hook_contents()
- */
-function block_ww_enterprise_contents($which_block) {
-  if ($which_block == 1) {
-    // Load attached images
-    if ( arg(0) == 'node' && is_numeric(arg(1)) && ! arg(2) ) { // basic url check
-      $node = node_load(arg(1)); //get node id
-      //@TODO:fix the image attach.
-      return;
-      $result = db_query('SELECT iid FROM {image_attach} WHERE nid = :nid', array(':nid' => $node->nid)); // select all the images attached to this node
-      $output = "";
-      foreach ($result as $r) {
-        $image = node_load($r->iid); // open image node
-        $output .= '<div class="image-attach">';
-        $output .= l(image_display($image, 'thumbnail'), "node/$r->iid", array('html' => TRUE)); // show a link to the image node
-        $output .= '</div>' . "<br>\n"; //
-        
-      }
-      return $output;
-    }
-  }
-  return null;
 }
 
 // Callback functions
@@ -302,6 +237,7 @@ function importImages($images, $publish, &$idArray, &$keywords) {
     $dest = tempnam(realpath(file_directory_temp()), $image['name']) . $image['ext'];
     $filePath = file_save_data(base64_decode($image['contents']), $dest);
     $inode = image_create_node_from($filePath, $image['name']);
+    
     if ($inode) {
       if (! $publish) {
         // set status to unpulished
@@ -328,7 +264,6 @@ function importImages($images, $publish, &$idArray, &$keywords) {
  * @param object &$inode image node object
  */
 function ww_enterprise_attachImage($file, &$fileObj, &$node, &$inode = null) {
-  dd($fileObj);
   static $clean_images = true;
   $wrp = entity_metadata_wrapper('node', $node);
   
@@ -491,7 +426,7 @@ function ww_enterprise_attachFiles($files, &$idArray, &$keywords, &$node, &$imag
       // it's an image
       $id = ww_enterprise_attachImage($file, $fileObj, $node, $inode);
 
-      $imageNodes[] = $inode;
+      $imageNodes[$file['enterprise_id']] = $fileObj;
     }
     else {
       // not an image, set as attachment
@@ -523,7 +458,7 @@ function ww_enterprise_attachFiles($files, &$idArray, &$keywords, &$node, &$imag
 function importTextElements($dossierProps, $textElements, $publish, $promote, $oldNode, $fileAttachments, &$keywords, &$idArray = array(), $elements = array(), $options = array(), $entUser = array(), $extraMetaData = array(), $dialogFields = array()) {
 
   global $user;
-
+  $account = clone $user;
   // Walk thru text elements to get head and body:
   $head = null;
   $teaser = null;
@@ -531,14 +466,14 @@ function importTextElements($dossierProps, $textElements, $publish, $promote, $o
   $writer = null;
   $author = null;
 
-  if (isset($options['writer']) && $options['writer'] != 'none') {
-    $author = getUsername($entUser);
+  if (isset($dialogFields['dialog_writer']) && (!(empty($dialogFields['dialog_writer'])))) {
+    $account = user_load_by_name($dialogFields['dialog_writer']);
   }
 
   if (is_null($author)) {
     $author = new stdClass();
-    $author->uid = $user->uid;
-    $author->name = $user->name;
+    $author->uid = $account->uid;
+    $author->name = $account->name;
   }
 
   if (!isset($elements['title']) || !isset($elements['body']) || !isset($elements['teaser'])) {
@@ -586,7 +521,7 @@ function importTextElements($dossierProps, $textElements, $publish, $promote, $o
   if (isset($extraMetaData['drupal_terms'])) {
     foreach ($extraMetaData['drupal_terms'] as $termdata) {
       $term = explode('-', $termdata);
-      $taxonomy = $term[1];
+      $taxonomy[] = $term[1];
     }
   }
 
@@ -777,7 +712,7 @@ function importTextElements($dossierProps, $textElements, $publish, $promote, $o
 //    $e->save();
     
     
-    dd('aaa');
+    $edit = (object) $edit;
     node_validate($edit, null); // validate node
     $errors = form_get_errors();
     if ( $errors ) {
@@ -792,6 +727,7 @@ function importTextElements($dossierProps, $textElements, $publish, $promote, $o
   $imageNodes = array();
   // Handle the attachements
   ww_enterprise_attachFiles($fileAttachments, $idArray, $keywords, $node, $imageNodes);
+
   //Cleanup non-referred images
   //@TODO:remove the image attache.
 //  return ;
@@ -805,21 +741,20 @@ function importTextElements($dossierProps, $textElements, $publish, $promote, $o
 //   }
 
   $node = (object)$node;
+  $wrp = entity_metadata_wrapper('node', $node);
+  if ($taxonomy) {
+    $wrp->field_tags->set($taxonomy);
+  }
+  
   
   if ( count($idArray) > 0 && count($imageNodes) > 0 ) {
     // parse enterprise image URL's to valid drupal URL's
-    ww_enterprise_parse_images($node, $idArray, $imageNodes);
+    $body = ww_enterprise_parse_images($body, $idArray, $imageNodes);
   }
   
-  $node->language = LANGUAGE_NONE;
-
-  $wrp = entity_metadata_wrapper('node', $node);
-  if ($taxonomy) {
-    $wrp->field_aaa->set($taxonomy);
-  }
   $node_body = array('value' => $body, 'summary' => $teaser, 'format' => 'full_html');
   $wrp->body->set($node_body);
-  
+  $wrp->language(LANGUAGE_NONE);
   $wrp->save();
   return $wrp->value();
 }
@@ -1052,7 +987,7 @@ function ww_enterprise_xmlrpc_nodePublish($logOnParams, $dossierProps, $textelem
  * @param array $idArray
  * @param array $imageNodes
  */
-function ww_enterprise_parse_images( &$node, $idArray, &$imageNodes ) {
+function ww_enterprise_parse_images($body, $idArray, &$imageNodes) {
   $ww_images = array();
   $ww_newimages = array();
 
@@ -1060,44 +995,20 @@ function ww_enterprise_parse_images( &$node, $idArray, &$imageNodes ) {
 
   // regular express our way through every enterprise image object.
   $pattern = '/<img[^>]*id=\"ent_([^\"]*)[^>]*src=\"([^\"]*)[^>]*>/i';
+  $pattern_result = array(); // elements: 0 = the full image element (<img>), 1 = the image id (without the "ent_" prefix), 2 = the image src.
+  preg_match_all($pattern, $body, $pattern_result);
 
-  $types = array('body');
-
-  foreach ($types as $type) {
-    $pattern_result = array(); // elements: 0 = the full image element (<img>), 1 = the image id (without the "ent_" prefix), 2 = the image src.
-
-    preg_match_all( $pattern, $node->$type, $pattern_result );
-
-    for ($i = 0; $i < count($pattern_result[0]); $i++) {
-      $ww_images[] = $pattern_result[0][$i]; // copy the found image to ww_images array
-      $ww_newimage_id = $idArray[$pattern_result[1][$i]];
-      $ww_newimage_src = "";
-
-      foreach ( $imageNodes as $imageNode ) {
-        if ( $imageNode->nid == $ww_newimage_id ) {
-          $ww_newimage_src = _ww_enterprise_getURL(null, false) . "/" . $imageNode->images["_original"];
-          // remove the image id for the image attach module
-          if (isset($node->iid) && $node->iid == $imageNode->nid) {
-            unset($node->iid);
-          }
-          // remove the image id from the iids array (new way to attach images)
-          if (isset($node->iids) && is_array($node->iids)) {
-            foreach ($node->iids as $key => $imageId) {
-              if ($imageId == $imageNode->nid) {
-                unset($node->iids[$key]);
-              }
-            }
-          }
-        }
-      }
-
-      $ww_newimages[] = str_replace($pattern_result[2][$i], $ww_newimage_src, $pattern_result[0][$i]);
-    }
-
-    for ($i = 0; $i < count($ww_images); $i++) {
-      $node->$type = str_replace($ww_images[$i], $ww_newimages[$i], $node->$type);
-    }
+  for ($i = 0; $i < count($pattern_result[0]); $i++) {
+    $ww_images[] = $pattern_result[0][$i]; // copy the found image to ww_images array
+    $ww_newimage_src = file_create_url($imageNodes[$pattern_result[1][$i]]->uri);
+    $ww_newimages[] = str_replace($pattern_result[2][$i], $ww_newimage_src, $pattern_result[0][$i]);
   }
+
+  for ($i = 0; $i < count($ww_images); $i++) {
+    $body = str_replace($ww_images[$i], $ww_newimages[$i], $body);
+  }
+  return $body;
+  
 }
 
 
@@ -1118,7 +1029,6 @@ function ww_enterprise_parse_images( &$node, $idArray, &$imageNodes ) {
  */
 function ww_enterprise_xmlrpc_nodeUpdate($logOnParams, $nid, $dossierProps, $textelements, $images, $otherFiles, $user, $extraMetaData, $options, $dialogFields) {
   // keep analyzer happy
-  dd(func_get_args());
   watchdog('yuval', 'nodeupdate');
   $images = $images;
 
@@ -1498,6 +1408,10 @@ function ww_enterprise_upload() {
   try {
     ww_enterprise_logOn($_POST);
     $file = file_save_upload('upload', array(), file_default_scheme() . '://');
+
+    //Set the file status to 1 to un temp it @see file_save_upload.
+    $file->status = 1;
+    file_save($file);
     $fidEl = $dom->createElement('fid');
     $fidEl->appendChild($dom->createTextNode($file->fid));
     $uploadResponseEl->appendChild($fidEl);
@@ -1531,22 +1445,14 @@ function ww_enterprise_xmlrpc_getFileId($file) {
     'image/png' => true,
   );
 
-  $query = "";
-  if (isset($imageTypes[$contentType])) {
-    //@TODO:fix the immage attach
-    //$query = "SELECT f.fid fileid, f.filename, 'image' type FROM {files} f JOIN {image} i ON f.fid = i.fid JOIN {image_attach} ia ON i.nid = ia.iid AND ia.nid = %d WHERE f.filename = '_original' AND f.filepath LIKE '%%%s%%'";
-    //Change the file name so we can search without the suffix
-    //$filename = preg_replace("/\\.([^.]+)$/", "", $filename);
-  }
-  else {
-    $query = "SELECT f.fid fileid, f.filename, 'other' type FROM {files} f JOIN {upload} u ON f.fid = u.fid AND u.nid = %d WHERE f.filename = '%s'";
-  }
-
   $info = array();
-
-  $result = db_query("SELECT f.fid fileid, f.filename, 'other' type FROM {files} f JOIN {upload} u ON f.fid = u.fid AND u.nid = %d WHERE f.filename = :f.filename", array(':f.filename' => $nodeId, '' => $filename));
-  while ($data = db_fetch_array($result)) {
-    $info[] = $data;
+  $q = db_select('file_managed','f');
+  $q->addField('f', 'fid', 'fid');
+  $q->condition('filename', $filename);
+  
+  foreach ($q->execute()->fetchObject() as $v) {
+    $info = array('fileid' => $v);
+    continue;
   }
 
   return $info;
@@ -1572,6 +1478,23 @@ function ww_enterprise_xmlrpc_getContentTypes($logOnParams) {
 }
 
 /**
+ * Get the users list
+ *
+ * @param array $logOnParams
+ * @return array
+ */
+function ww_enterprise_xmlrpc_getUsers($logOnParams) {
+
+  ww_enterprise_logOn($logOnParams);
+  $rid = WW_ENTERPRISE_BLOGGER_RID;
+  $q = db_select('users', 'u');
+  $q->addJoin('inner', 'users_roles', 'ur', "ur.uid = u.uid and ur.rid = $rid");
+  $q->addField('u', 'uid');
+  $q->addField('u', 'name');
+  return $q->execute()->fetchAllKeyed();
+  
+}
+/**
  * Get the vocabularies for a content type and return these in a array
  *
  * @param array $logOnParams
@@ -1583,7 +1506,7 @@ function ww_enterprise_xmlrpc_getVocabularies($logOnParams, $contentType) {
   $fields_info = field_info_fields();
   $voc_names = array();
   foreach ($fields_info as $f) {
-    if (($f['module'] == 'taxonomy') && (in_array( $contentType, $f['bundles']['node']))) {
+    if (($f['module'] == 'taxonomy') && (in_array($contentType, $f['bundles']['node']))) {
       $voc_names[] = $f['settings']['allowed_values'][0]['vocabulary'];
     } 
   }
@@ -1620,7 +1543,6 @@ function ww_enterprise_xmlrpc_getVocabularies($logOnParams, $contentType) {
  */
 function ww_enterprise_xmlrpc_getTerms($logOnParams, $vocabularies) {
   ww_enterprise_logOn($logOnParams);
-
   $terms = array();
   foreach ($vocabularies as $voc) {
     $result = db_query("SELECT vid FROM {taxonomy_vocabulary} WHERE name = :name ORDER BY name ASC", array(':name' => $voc));
@@ -1655,7 +1577,6 @@ function ww_enterprise_xmlrpc_getUrl($nodeId) {
  */
 function ww_enterprise_xmlrpc_getCurrentDataForGetDialog($logOnParams, $nodeId, $contentType, $params) {
   ww_enterprise_logOn($logOnParams);
-
   $commentTypes = array('disabled', 'read', 'read/write');
 
   if (empty($contentType)) {
@@ -1700,10 +1621,15 @@ function ww_enterprise_xmlrpc_getCurrentDataForGetDialog($logOnParams, $nodeId, 
         case 'C_DIALOG_DRUPAL_COMMENTS':
           $data[$param] = $commentTypes[variable_get('comment_' . $contentType, 0)];
           break;
-        case 'C_DIALOG_DRUPAL_PUBLISH_FROM':
+//         case 'C_DIALOG_DRUPAL_PUBLISH_FROM':
+//           break;
+//         case 'C_DIALOG_DRUPAL_PUBLISH_TILL':
+//           break;
+        case 'C_DIALOG_DRUPAL_WRITER':
+          $account = user_load($node->uid);
+          $data[$param] = $account->name;
           break;
-        case 'C_DIALOG_DRUPAL_PUBLISH_TILL':
-          break;
+          
       }
     }
   }

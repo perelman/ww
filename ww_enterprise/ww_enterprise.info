@@ -8,3 +8,4 @@ version = "7.5.0 Build 440"
 ;dependencies[] = image_attach
 ;dependencies[] = upload
 dependencies[] = taxonomy
+dependencies[] = entity
